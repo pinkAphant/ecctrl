@@ -612,17 +612,38 @@ const ShapeCastWheel: ForwardRefComponent<ShapeCastWheelProps, THREE.Group> = /*
         }
     }, [groundDetection, rayCast, rayShape, rayLength, rayShapeR, rayShapeH, ecctrlVehicleRayFilter])
 
-    const computeFloatingImpulse = useCallback(() => {
+    const pointRel = useRef<THREE.Vector3>(new THREE.Vector3())
+    const pointTorque = useRef<THREE.Vector3>(new THREE.Vector3())
+
+    const computeEffectivePointMass = useCallback((body: RapierRigidBody, worldPoint: THREE.Vector3, worldDir: THREE.Vector3): number => {
+        const invM = body.invMass()
+        const com = body.worldCom()
+        pointRel.current.set(worldPoint.x - com.x, worldPoint.y - com.y, worldPoint.z - com.z)
+        pointTorque.current.crossVectors(pointRel.current, worldDir)
+        const tx = pointTorque.current.x, ty = pointTorque.current.y, tz = pointTorque.current.z
+        const ii = body.effectiveWorldInvInertia()
+        const rotTerm =
+            tx * (ii.m11 * tx + ii.m12 * ty + ii.m13 * tz) +
+            ty * (ii.m12 * tx + ii.m22 * ty + ii.m23 * tz) +
+            tz * (ii.m13 * tx + ii.m23 * ty + ii.m33 * tz)
+        const denom = invM + Math.max(0, rotTerm)
+        return denom > 1e-9 ? 1 / denom : body.mass()
+    }, [])
+
+    const computeFloatingImpulse = useCallback((body: RapierRigidBody) => {
         if (rayHitBody.current) {
+            const dt = world.timestep
             const springForce = springK * Math.max(0, rayLength - suspensionToi.current);
-            const dampingForce = dampingC * rayHitPointVelocity.current.dot(rayUpAxis.current);
+            const mEffUp = computeEffectivePointMass(body, supportPoint.current, rayUpAxis.current)
+            const effDampingC = mEffUp > 1e-6 ? dampingC / (1 + ((dampingC + springK * dt) * dt) / mEffUp) : dampingC
+            const dampingForce = effDampingC * rayHitPointVelocity.current.dot(rayUpAxis.current);
             floatingImpulse.current
                 .copy(rayHitPointNormal.current)
-                .multiplyScalar(Math.max(0, springForce - dampingForce) * world.timestep);
+                .multiplyScalar(Math.max(0, springForce - dampingForce) * dt);
         } else {
             floatingImpulse.current.set(0, 0, 0)
         }
-    }, [rayLength, springK, dampingC, world.timestep])
+    }, [rayLength, springK, dampingC, world.timestep, computeEffectivePointMass])
 
     /**
      * Detect is on a moving object
@@ -736,11 +757,15 @@ const ShapeCastWheel: ForwardRefComponent<ShapeCastWheelProps, THREE.Group> = /*
     /**
      * Compute longitudinal and lateral friction impulses based on wheel slip and contact conditions
      */
-    const computeWheelFrictionImpulse = useCallback((gravityMag: number) => {
-        // Early exit if no contact, no need to compute friction
-        if (!rayHitBody.current) {
-            wheelSupportForceMag.current = wheelMass * gravityMag
-            effectiveInertia.current = wheelInertia + (wheelSupportForceMag.current / gravityMag) * rayShapeR * rayShapeR;
+    const computeWheelFrictionImpulse = useCallback((body: RapierRigidBody, gravityMag: number) => {
+        // Early exit if no contact or zero gravity, clearing stale impulses without dividing by zero
+        if (!rayHitBody.current || !(gravityMag > 1e-6)) {
+            wheelSupportForceMag.current = wheelMass * Math.max(0, gravityMag)
+            effectiveInertia.current = wheelInertia + wheelMass * rayShapeR * rayShapeR;
+            smoothedLngImpulse.current = 0
+            smoothedLatImpulse.current = 0
+            lngFrictionImp.current.set(0, 0, 0)
+            latFrictionImp.current.set(0, 0, 0)
             lngSlipRatio.current = 0
             latSlipRatio.current = 0
             slipStrength.current = 0
@@ -785,15 +810,23 @@ const ShapeCastWheel: ForwardRefComponent<ShapeCastWheelProps, THREE.Group> = /*
         const maxLngImp = wheelSupportForceMag.current * finalLngSlipValue * frictionCoef.current * world.timestep * lngFrictionEllipseScale
         const maxLatImp = wheelSupportForceMag.current * finalLatSlipValue * frictionCoef.current * world.timestep * latFrictionEllipseScale
 
-        // Compute desired longitudinal and lateral friction impulse based on slip and speed
-        desiredLngImpulse.current = slipDiff * effectiveInertia.current / (rayShapeR * rayShapeR)
-        desiredLatImpulse.current = latContactVel * (wheelSupportForceMag.current / gravityMag)
+        if (maxLngImp <= 1e-9 || maxLatImp <= 1e-9) {
+            desiredLngImpulse.current = 0
+            desiredLatImpulse.current = 0
+        } else {
+            // Bound lateral stop impulse by exact rigid-body effective point mass so discrete steps never reverse velocity
+            const mEffLat = latAxis.current.lengthSq() > 1e-6
+                ? Math.min(wheelSupportForceMag.current / gravityMag, computeEffectivePointMass(body, rayHitPointPosition.current, latAxis.current))
+                : wheelSupportForceMag.current / gravityMag
+            desiredLngImpulse.current = slipDiff * effectiveInertia.current / (rayShapeR * rayShapeR)
+            desiredLatImpulse.current = latContactVel * mEffLat
 
-        // Clamp the desired friction impulse within the friction ellipse
-        const ellipseUsage = Math.sqrt(desiredLngImpulse.current / maxLngImp * desiredLngImpulse.current / maxLngImp + desiredLatImpulse.current / maxLatImp * desiredLatImpulse.current / maxLatImp);
-        if (ellipseUsage > 1.0) {
-            desiredLngImpulse.current /= ellipseUsage;
-            desiredLatImpulse.current /= ellipseUsage;
+            // Clamp the desired friction impulse within the friction ellipse
+            const ellipseUsage = Math.hypot(desiredLngImpulse.current / maxLngImp, desiredLatImpulse.current / maxLatImp);
+            if (ellipseUsage > 1.0) {
+                desiredLngImpulse.current /= ellipseUsage;
+                desiredLatImpulse.current /= ellipseUsage;
+            }
         }
 
         // Keep low-speed tires responsive while still allowing speed-based relaxation.
@@ -801,11 +834,16 @@ const ShapeCastWheel: ForwardRefComponent<ShapeCastWheelProps, THREE.Group> = /*
         let latCoeff = clamp(Math.max(minLatRelaxCoeff, (latContactVelAbs / Math.max(relaxLatRate, 1e-6)) * world.timestep), 0, 1);
         smoothedLngImpulse.current += (desiredLngImpulse.current - smoothedLngImpulse.current) * lngCoeff;
         smoothedLatImpulse.current += (desiredLatImpulse.current - smoothedLatImpulse.current) * latCoeff;
+        if (smoothedLatImpulse.current * desiredLatImpulse.current <= 0) {
+            smoothedLatImpulse.current = desiredLatImpulse.current * latCoeff;
+        } else if (Math.abs(smoothedLatImpulse.current) > Math.abs(desiredLatImpulse.current)) {
+            smoothedLatImpulse.current = desiredLatImpulse.current;
+        }
 
         // Apply the friction impulse to the wheel and the contacted body
         lngFrictionImp.current.copy(lngAxis.current).multiplyScalar(smoothedLngImpulse.current)
         latFrictionImp.current.copy(latAxis.current).multiplyScalar(-smoothedLatImpulse.current)
-    }, [wheelMass, wheelInertia, rayShapeR, lowVelThreshold, lngSlipRatioCurve, latSlipRatioCurve, lngFrictionEllipseScale, latFrictionEllipseScale, relaxLngRate, relaxLatRate, minLngRelaxCoeff, minLatRelaxCoeff])
+    }, [wheelMass, wheelInertia, rayShapeR, lowVelThreshold, lngSlipRatioCurve, latSlipRatioCurve, lngFrictionEllipseScale, latFrictionEllipseScale, relaxLngRate, relaxLatRate, minLngRelaxCoeff, minLatRelaxCoeff, computeEffectivePointMass])
 
     /**
      * Solve wheel rotation based on drive/brake torque and friction torque
@@ -944,9 +982,9 @@ const ShapeCastWheel: ForwardRefComponent<ShapeCastWheelProps, THREE.Group> = /*
         castWheelContact(vehicleBody)
         isOnMovingObjectDetect(vehicleBody)
         computeRelativeVelocity()
-        computeFloatingImpulse()
+        computeFloatingImpulse(vehicleBody)
         computeContactFriction()
-        computeWheelFrictionImpulse(vehicleGravityMag)
+        computeWheelFrictionImpulse(vehicleBody, vehicleGravityMag)
         applyMassOnStandCollider()
         applyFricitonOnStandCollider()
         solveWheelRotation()
