@@ -41,7 +41,6 @@ export const createSlerpVec3 = () => {
     refAxis?: THREE.Vector3
   ) => {
     const dot = clamp(start.dot(end), -1, 1);
-    if (dot > 1 - 1e-7) return resultVec3.copy(start).lerp(end, percent).normalize();
 
     // When vectors are nearly opposite, find a stable perpendicular vector
     if (Math.abs(dot + 1) < 0.001) {

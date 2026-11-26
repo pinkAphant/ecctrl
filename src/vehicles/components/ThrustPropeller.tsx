@@ -52,6 +52,7 @@ const ThrustPropeller: ForwardRefComponent<ThrustPropellerProps, THREE.Group> = 
      * Retrieve context object from ecctrl vehicle
      */
     const vehicleValue = useContext(VehicleContext)
+    const vehicleBody = vehicleValue!.body.current
     const vehiclePos = useRef<THREE.Vector3>(new THREE.Vector3())
     const vehicleQuat = useRef<THREE.Quaternion>(new THREE.Quaternion())
     const vehicleInvertQuat = useRef<THREE.Quaternion>(new THREE.Quaternion())
@@ -127,11 +128,6 @@ const ThrustPropeller: ForwardRefComponent<ThrustPropellerProps, THREE.Group> = 
         ay: 0,
         az: 0,
     })
-    propellerInfo.current.enable = enable
-    propellerInfo.current.maxThrust = maxThrust
-    propellerInfo.current.torqueRatio = torqueRatio
-    propellerInfo.current.invertThrust = invertThrust
-    propellerInfo.current.invertTorque = invertTorque
     useEffect(() => {
         vehicleValue?.regPropeller(propellerInfo)
         return () => vehicleValue?.unregPropeller(propellerId)
@@ -303,32 +299,24 @@ const ThrustPropeller: ForwardRefComponent<ThrustPropellerProps, THREE.Group> = 
      * 
      */
 
-    const stepPropeller = useCallback(() => {
-        const vehicleBody = vehicleValue?.body.current
-        if (!vehicleBody || !enable) {
-            propellerInfo.current.lx = 0
-            propellerInfo.current.ly = 0
-            propellerInfo.current.lz = 0
-            propellerInfo.current.ax = 0
-            propellerInfo.current.ay = 0
-            propellerInfo.current.az = 0
-            propellerInfo.current.thrustImpulse.set(0, 0, 0)
-            propellerInfo.current.torqueImpulse.set(0, 0, 0)
-            propellerInfo.current.finalThrottle = 0
-            propellerInfo.current.throttle = 0
-            return
-        }
-
-        const frameRateCorrection = 60 * world.timestep
-        updateVehicleInfo(vehicleBody)
-        updatePropellerInfo()
-        if (propellerModelUpdate) updatePropellerModel(frameRateCorrection)
-        updateDebugger()
-    }, [vehicleValue, enable, world.timestep, updateVehicleInfo, updatePropellerInfo, propellerModelUpdate, updatePropellerModel, updateDebugger])
-    propellerInfo.current.step = stepPropeller
-
     useFrame(() => {
-        if (!vehicleValue) stepPropeller()
+        // Early return if no vehicle body or not enabled
+        if (!vehicleBody || !enable) return
+
+        // Correct frame rate difference
+        const frameRateCorrection = 60 * world.timestep
+
+        // Update vehicle info
+        updateVehicleInfo(vehicleBody)
+
+        // Update propeller info
+        updatePropellerInfo()
+
+        // Update propeller models
+        if (propellerModelUpdate) updatePropellerModel(frameRateCorrection)
+
+        // Update debug indicators 
+        updateDebugger()
     })
 
     return (
@@ -393,7 +381,6 @@ export interface PropellerInfoType extends Omit<ThrustPropellerProps, 'id'> {
     finalThrottle: number
     throttle: number
     setThrottle?: (value: number) => void
-    step?: () => void
 
     // Max potential impulse
     lx: number,

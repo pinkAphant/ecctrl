@@ -1,5 +1,3 @@
-@AGENTS.md
+# `@pinkaphant/ecctrl` (`ecctrl`) — Agent & Contributor Guide
 
-# `@pinkaphant/ecctrl` (`ecctrl`) — Claude Code Guide
-
-Follow [AGENTS.md](./AGENTS.md), [readme.md](./readme.md), and [docs/api-reference.md](./docs/api-reference.md) for `@pinkaphant/ecctrl@2.0.4-beta.4`. Build with `npm run build` and verify downstream physics suites in `../khr3`.
+Read [AGENTS.md](./AGENTS.md) and [docs/api-reference.md](./docs/api-reference.md). Keep `src/` byte-for-byte identical to `ad6ee7f` (upstream `pmndrs/ecctrl@2.0.2` + the 1-line `return` after `body.wakeUp()` in `src/vehicles/EcctrlVehicle.tsx`).
