@@ -38,4 +38,10 @@ jobs:
           npm run build
 
       - name: Publish to npm
-        run: npm publish --provenance --access public
+        run: |
+          PKG_VER=$(node -p "require('./package.json').version")
+          if [[ "$PKG_VER" == *-* ]]; then
+            npm publish --provenance --access public --tag beta
+          else
+            npm publish --provenance --access public
+          fi
