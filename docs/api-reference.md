@@ -1021,4 +1021,4 @@ useFrame(() => {
 
 ## Version Notes
 
-This document targets `ecctrl@2.0.0`.
+This document targets `@pinkaphant/ecctrl@2.0.4-beta.4` (pass `name="..."` rather than `id` on `<ShapeCastWheel>` and `<ThrustPropeller>`, which step synchronously inside `EcctrlVehicle`'s `useFrame` with unilateral rebound clamping, semi-implicit point-mass damping, and zero-G `gravityMag` guards).
