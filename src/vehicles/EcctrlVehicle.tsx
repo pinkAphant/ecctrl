@@ -530,7 +530,7 @@ const EcctrlVehicle: ForwardRefComponent<EcctrlVehicleProps, EcctrlVehicleHandle
         }
 
         wheels.forEach((wheel) => {
-            if (!wheel.current.rayHit) return
+            if (wheel.current.enable === false || !wheel.current.rayHit) return
             // Apply suspension at the support point to avoid contact-patch jacking during steering.
             body.applyImpulseAtPoint(wheel.current.floatImp, wheel.current.supPos, false)
             body.applyImpulseAtPoint(wheel.current.lngFricImp, wheel.current.rayHitPos, false)
@@ -547,6 +547,11 @@ const EcctrlVehicle: ForwardRefComponent<EcctrlVehicleProps, EcctrlVehicleHandle
 
         // Apply control logics based on selected control mode
         velocityBasedCarControl(input, wheels)
+
+        // Step registered wheels synchronously so raycasts, damping, and tire friction match current frame [t].
+        wheels.forEach((wheel) => {
+            wheel.current.step?.()
+        })
 
         // Apply drive/brake/friction impulse from shape cast wheels
         applyWheelImpulse(wheels, body)
@@ -590,6 +595,7 @@ const EcctrlVehicle: ForwardRefComponent<EcctrlVehicleProps, EcctrlVehicleHandle
         let sumLX = 0, sumLY = 0, sumLZ = 0
         let sumAX = 0, sumAY = 0, sumAZ = 0
         propellers.forEach(p => {
+            if (p.current.enable === false) return
             sumLX += p.current.lx
             sumLY += p.current.ly
             sumLZ += p.current.lz
@@ -724,6 +730,7 @@ const EcctrlVehicle: ForwardRefComponent<EcctrlVehicleProps, EcctrlVehicleHandle
 
         propellers.forEach((propeller) => {
             const info = propeller.current
+            if (info.enable === false) return
             const finalThrottle = computePropellerFinalThrottle(info, maxSafeMix)
 
             // Pass the finalThrottle to each propeller component for visualization 
@@ -755,6 +762,17 @@ const EcctrlVehicle: ForwardRefComponent<EcctrlVehicleProps, EcctrlVehicleHandle
     // Main drone control application function
     const applyDroneControl = useCallback((propellers: MutablePropellersInfoType, body: RapierRigidBody, input: VehicleInput) => {
         if (!body) return;
+
+        // Step registered propellers synchronously so local thrust/torque potentials match current frame [t].
+        propellers.forEach((propeller) => {
+            propeller.current.step?.()
+        })
+
+        let anyEnabledPropeller = false
+        propellers.forEach((propeller) => {
+            if (propeller.current.enable !== false) anyEnabledPropeller = true
+        })
+        if (!anyEnabledPropeller) return
 
         // Compute propellers overall potential
         computePropellerPotential(propellers);

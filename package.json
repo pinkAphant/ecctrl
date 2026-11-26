@@ -1,6 +1,6 @@
 {
-  "name": "ecctrl",
-  "version": "2.0.2",
+  "name": "@pinkaphant/ecctrl",
+  "version": "2.0.4-beta.4",
   "author": "Erdong Chen",
   "license": "MIT",
   "description": "A physics-driven character, vehicle, and custom-gravity controller toolkit for React Three Fiber and Rapier.",
@@ -23,11 +23,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/pmndrs/ecctrl.git"
+    "url": "git+https://github.com/pinkAphant/ecctrl.git"
   },
-  "homepage": "https://github.com/pmndrs/ecctrl",
+  "homepage": "https://github.com/pinkAphant/ecctrl#readme",
   "bugs": {
-    "url": "https://github.com/pmndrs/ecctrl/issues"
+    "url": "https://github.com/pinkAphant/ecctrl/issues"
   },
   "files": [
     "dist",
