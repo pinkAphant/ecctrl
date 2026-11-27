@@ -2,11 +2,9 @@
 
 Notable changes to Ecctrl are documented here.
 
-## 2.0.4-beta.4 - 2026-11-26
+## 2.0.4-beta.5 - 2026-11-26
 
-- Fixed vehicle wake-up bump by returning after `body.wakeUp()` on frames where gravity was skipped while asleep (`EcctrlVehicle`).
-- Eliminated 2-frame suspension/tire impulse lag by stepping registered `ShapeCastWheel` and `ThrustPropeller` instances synchronously inside `EcctrlVehicle` before applying impulses, and computing `rayHitPointVelocity` before suspension damping (`ShapeCastWheel`).
-- Clamped unilateral suspension support impulse (`Math.max(0, springForce - dampingForce)`) so tires never pull the chassis downward during rebound (`ShapeCastWheel`).
+- Restored canonical `ad6ee7f` (`pmndrs/ecctrl@2.0.2` + 1-line `return` after `body.wakeUp()` in `EcctrlVehicle` so sleeping vehicles skip wheel impulses on the wake frame when gravity was skipped).
 
 ## 2.0.2 - 2026-09-06
 
